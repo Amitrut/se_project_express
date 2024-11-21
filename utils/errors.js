@@ -1,3 +1,8 @@
-// Error Codes
 
-module.exports = { invalidData: 400, dataNotFound: 404, defaultData: 500 };
+
+// errors.js
+module.exports = {
+  BAD_REQUEST_STATUS_CODE: 400,
+  NOT_FOUND_STATUS_CODE: 404,
+  SERVER_ERROR_STATUS_CODE: 500,
+};
