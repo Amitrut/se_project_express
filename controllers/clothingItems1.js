@@ -1,4 +1,4 @@
-const ClothingItem = require("../models/clothingItem");
+const ClothingItem = require("../models/clothingItem1");
 const {
   BAD_REQUEST_STATUS_CODE,
   NOT_FOUND_STATUS_CODE,
