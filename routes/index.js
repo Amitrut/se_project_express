@@ -1,15 +1,16 @@
 const router = require("express").Router();
-const { NOT_FOUND_STATUS_CODE } = require("../utils/errors");
+const clothingItems = require("./clothingItems");
 const userRouter = require("./users");
-const itemRouter = require("./clothingItems");
+const { NOT_FOUND_ERROR } = require("../utils/errors");
+const { login, createUser } = require("../controllers/users");
 
-// Add an empty line here to satisfy ESLint's `newline-after-import` rule
-
+router.use("/items", clothingItems);
 router.use("/users", userRouter);
-router.use("/items", itemRouter);
+router.post("/signin", login);
+router.post("/signup", createUser);
 
 router.use((req, res) => {
-  res.status(NOT_FOUND_STATUS_CODE).send({ message: "Router not found" });
+  res.status(NOT_FOUND_ERROR).send({ message: "Router not found" });
 });
 
 module.exports = router;
