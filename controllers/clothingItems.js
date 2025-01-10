@@ -1,135 +1,108 @@
-const mongoose = require("mongoose");
-const {
-  INVALID_DATA_ERROR,
-  NOT_FOUND_ERROR,
-  DEFAULT_ERROR,
-  FORBIDDEN_ERROR,
-} = require("../utils/errors");
-const clothingItem = require("../models/clothingItem");
+const ClothingItem = require("../models/clothingItem");
 
-// Error handling
-const handleErrors = (err, res) => {
-  console.error(err);
-  res.setHeader("Content-Type", "application/json");
-  if (err.name === "ValidationError") {
-    return res
-      .status(INVALID_DATA_ERROR)
-      .send({ message: "Invalid data provided" });
-  }
-  if (
-    err.name === "DocumentNotFoundError" ||
-    err.message === "DocumentNotFoundError"
-  ) {
-    return res.status(NOT_FOUND_ERROR).send({ message: "Item not found" });
-  }
-  if (err.name === "Forbidden") {
-    return res
-      .status(FORBIDDEN_ERROR)
-      .send({ message: "Forbidden: You cannot delete this item" });
-  }
-  // Default return for unexpected errors
-  return res
-    .status(DEFAULT_ERROR)
-    .send({ message: "An unexpected error occurred" });
-};
+const BadRequestError = require("../errors/BadRequestError");
+const ForbiddenError = require("../errors/ForbiddenError");
+const NotFoundError = require("../errors/NotFoundError");
 
-// Define isValidObjectId
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+const createItem = (req, res, next) => {
+  console.log(req);
+  console.log(req.body);
 
-// GET /items - Get all items
-const getItems = (req, res) =>
-  clothingItem
-    .find({})
-    .then((items) => res.status(200).send(items))
-    .catch((err) => handleErrors(err, res));
-
-// POST /items - Create a new item
-const createItem = (req, res) => {
   const { name, weather, imageUrl } = req.body;
 
-  if (!name || !weather || !imageUrl) {
-    return res
-      .status(INVALID_DATA_ERROR)
-      .send({ message: "Missing required fields for item creation" });
-  }
-
-  return clothingItem
-    .create({ name, weather, imageUrl, owner: req.user._id })
-    .then((item) => res.status(201).send({ data: item }))
-    .catch((err) => handleErrors(err, res));
-};
-
-// DELETE /items/:itemId - Delete an item by ID
-const deleteItem = (req, res) => {
-  const { itemId } = req.params;
-
-  if (!itemId || !isValidObjectId(itemId)) {
-    return res
-      .status(INVALID_DATA_ERROR)
-      .send({ message: "Invalid or missing item ID" });
-  }
-
-  return clothingItem
-    .findById(itemId)
-    .orFail(() => new Error("DocumentNotFoundError"))
+  ClothingItem.create({ name, weather, imageUrl, owner: req.user._id })
     .then((item) => {
-      if (item.owner.toString() !== req.user._id) {
-        const err = new Error("You cannot delete this item");
-        err.name = "Forbidden";
-        throw err;
-      }
-      return item.remove();
+      res.status(201).send({ data: item });
     })
-    .then(() => res.status(200).send({ message: "Item successfully deleted" }))
-    .catch((err) => handleErrors(err, res));
+    .catch((err) => {
+      console.error(err);
+      if (err.name === "ValidationError") {
+        return next(new BadRequestError("Data is invalid"));
+      }
+      return next(err);
+    });
 };
 
-// PUT /items/:itemId/likes - Like an item
-const likeItem = (req, res) => {
+const getItems = (req, res, next) => {
+  ClothingItem.find({})
+    .then((items) => res.status(200).send({ data: items }))
+    .catch((err) => {
+      console.error(err);
+      return next(err);
+    });
+};
+
+const deleteItem = (req, res, next) => {
   const { itemId } = req.params;
 
-  if (!itemId || !isValidObjectId(itemId)) {
-    return res
-      .status(INVALID_DATA_ERROR)
-      .send({ message: "Invalid or missing item ID" });
-  }
-
-  return clothingItem
-    .findByIdAndUpdate(
-      itemId,
-      { $addToSet: { likes: req.user._id } },
-      { new: true },
-    )
-    .then((item) =>
-      item
-        ? res.status(200).send(item)
-        : res.status(NOT_FOUND_ERROR).send({ message: "Item not found" }),
-    )
-    .catch((err) => handleErrors(err, res));
+  ClothingItem.findById(itemId)
+    .orFail()
+    .then((item) => {
+      if (String(item.owner) !== req.user._id) {
+        return next(new ForbiddenError("Access is forbidden"));
+      }
+      return item
+        .deleteOne()
+        .then(() =>
+          res.status(200).send({ message: "Item successfully deleted" })
+        );
+    })
+    .catch((err) => {
+      console.error(err);
+      if (err.name === "CastError") {
+        return next(new BadRequestError("Data is invalid"));
+      }
+      if (err.name === "DocumentNotFoundError") {
+        return next(new NotFoundError("Item was not found"));
+      }
+      return next(err);
+    });
 };
 
-// DELETE /items/:itemId/likes - Unlike an item
-const unlikeItem = (req, res) => {
-  const { itemId } = req.params;
-
-  if (!itemId || !isValidObjectId(itemId)) {
-    return res
-      .status(INVALID_DATA_ERROR)
-      .send({ message: "Invalid or missing item ID" });
-  }
-
-  return clothingItem
-    .findByIdAndUpdate(
-      itemId,
-      { $pull: { likes: req.user._id } },
-      { new: true },
-    )
-    .then((item) =>
-      item
-        ? res.status(200).send(item)
-        : res.status(NOT_FOUND_ERROR).send({ message: "Item not found" }),
-    )
-    .catch((err) => handleErrors(err, res));
+const likeItem = (req, res, next) => {
+  ClothingItem.findByIdAndUpdate(
+    req.params.itemId,
+    { $addToSet: { likes: req.user._id } },
+    { new: true }
+  )
+    .orFail()
+    .then((item) => res.status(200).send({ data: item }))
+    .catch((err) => {
+      console.error(err);
+      if (err.name === "CastError") {
+        return next(new BadRequestError("Data is invalid"));
+      }
+      if (err.name === "DocumentNotFoundError") {
+        return next(new NotFoundError("Item was not found"));
+      }
+      return next(err);
+    });
 };
 
-module.exports = { getItems, createItem, deleteItem, likeItem, unlikeItem };
+const dislikeItem = (req, res, next) => {
+  ClothingItem.findByIdAndUpdate(
+    req.params.itemId,
+    { $pull: { likes: req.user._id } },
+    { new: true }
+  )
+    .orFail()
+    .then((item) => res.status(200).send({ data: item }))
+    .catch((err) => {
+      console.error(err);
+      if (err.name === "CastError") {
+        return next(new BadRequestError(err.message));
+      }
+      if (err.name === "DocumentNotFoundError") {
+        return next(new NotFoundError(err.message));
+      }
+      return next(err);
+    });
+};
+
+module.exports = {
+  createItem,
+  getItems,
+  deleteItem,
+  likeItem,
+  dislikeItem,
+};
